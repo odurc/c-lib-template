@@ -1,0 +1,44 @@
+#!/bin/bash
+
+function show_usage {
+    echo -e "Usage:\t$0 <library_name> <destination_path>"
+    echo -e "\tThis script creates a git repository named as library_name, copies"
+    echo -e "\tthe template files and edit them according the library name."
+    exit 1
+}
+
+if [[ "$#" != "2" ]]; then
+    show_usage
+fi
+
+LIB_NAME=$1
+DEST_PATH=$2
+
+# check library name
+if [[ ${LIB_NAME} == *" "* ]]; then
+    echo "error: library name must not contain spaces"
+    exit 1
+fi
+
+LIB_HEADER=$(echo "${LIB_NAME/-/_}_H" | tr 'a-z' 'A-Z')
+
+# clean directory to avoid copy object files
+make clean 1>/dev/null
+
+# create project and copy files
+mkdir -p ${DEST_PATH}
+git init ${DEST_PATH}/${LIB_NAME} 1>/dev/null
+cp -r src/ test/ Makefile .gitignore ${DEST_PATH}/${LIB_NAME}
+
+cd ${DEST_PATH}/${LIB_NAME}
+
+# edit files
+sed -i "s/LIB_NAME = .*$/LIB_NAME = ${LIB_NAME}/g" Makefile
+sed -i "s/LIBRARY_H/${LIB_HEADER}/g" src/library.h
+sed -i "s/library.h/${LIB_NAME}.h/g" src/library.c
+
+# rename files
+mv src/library.h src/${LIB_NAME}.h
+mv src/library.c src/${LIB_NAME}.c
+
+echo "project ${LIB_NAME} created at ${DEST_PATH}"
