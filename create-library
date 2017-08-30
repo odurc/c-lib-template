@@ -1,18 +1,47 @@
 #!/bin/bash
 
+LICENSES=("MIT")
+
 function show_usage {
-    echo -e "Usage:\t$0 <library_name> <destination_path>"
-    echo -e "\tThis script creates a git repository named as library_name, copies"
-    echo -e "\tthe template files and edit them according the library name."
+    echo -e "Usage:\t$0 [OPTIONS] <library_name> <destination_path>"
+    echo -e "   This script creates a git repository named as library_name, copies"
+    echo -e "   the template files and edit them according the library name."
+    echo
+    echo -e "OPTIONS"
+    echo -e "   --license=NAME   add a license to the project"
+    echo -e "                    valid NAME: ${LICENSES[@]}"
     exit 1
 }
 
-if [[ "$#" != "2" ]]; then
+pos_args=()
+opt_args=()
+for arg in "$@"; do
+    if [[ "$arg" == "--"* ]]; then
+        opt_args+=("$arg")
+    else
+        pos_args+=("$arg")
+    fi
+done
+
+if [[ "${#pos_args[@]}" < "2" ]]; then
     show_usage
 fi
 
-LIB_NAME=$1
-DEST_PATH=$2
+# positional arguments
+LIB_NAME=${pos_args[0]}
+DEST_PATH=${pos_args[1]}
+
+# optional arguments
+for opt in ${opt_args[@]}; do
+    if [[ "$opt" == *"="* ]]; then
+        # extract variable name and its value
+        var=`echo ${opt:2} | cut -d'=' -f1 | sed 's/-/_/g'`
+        val=`echo ${opt:2} | cut -d'=' -f2`
+
+        # create variable
+        eval `echo $var=$val`
+    fi
+done
 
 # check library name
 if [[ ${LIB_NAME} == *" "* ]]; then
@@ -20,25 +49,59 @@ if [[ ${LIB_NAME} == *" "* ]]; then
     exit 1
 fi
 
+# check if license is valid
+LICENSE_FILE=""
+LICENSE_HEADER=""
+if [[ -n "${license}" ]]; then
+    license=$(echo ${license} | tr 'a-z' 'A-Z')
+
+    for l in ${LICENSES[@]}; do
+        if [[ "$l" == "${license}" ]]; then
+            LICENSE_FILE="licenses/${license}"
+            LICENSE_HEADER="${LICENSE_FILE}.header"
+            break
+        fi
+    done
+fi
+
+# adjust library prefix
 LIB_PREFIX=$(echo "${LIB_NAME/-/_}_" | tr 'a-z' 'A-Z')
 
 # clean directory to avoid copy object files
 make clean 1>/dev/null
 
-# create project and copy files
-mkdir -p ${DEST_PATH}
-git init ${DEST_PATH}/${LIB_NAME} 1>/dev/null
-cp -r src/ test/ Makefile .gitignore ${DEST_PATH}/${LIB_NAME}
+# create git project
+PROJ_PATH=${DEST_PATH}/${LIB_NAME}
+mkdir -p ${PROJ_PATH}
+git init ${PROJ_PATH} 1>/dev/null
 
-cd ${DEST_PATH}/${LIB_NAME}
+# create source files
+mkdir -p ${PROJ_PATH}/src
+cat ${LICENSE_HEADER} src/library.h > ${PROJ_PATH}/src/${LIB_NAME}.h
+cat ${LICENSE_HEADER} src/library.c > ${PROJ_PATH}/src/${LIB_NAME}.c
+
+# copy remaining files
+cp -r Makefile .gitignore ${LICENSE_FILE} test/ ${PROJ_PATH}
+
+# change workdir
+cd ${PROJ_PATH}
 
 # edit files
 sed -i "s/LIB_NAME = .*$/LIB_NAME = ${LIB_NAME}/g" Makefile
-sed -i "s/LIBRARY_/${LIB_PREFIX}/g" src/library.h
-sed -i "s/library.h/${LIB_NAME}.h/g" src/library.c
+sed -i "s/LIBRARY_/${LIB_PREFIX}/g" src/${LIB_NAME}.h
+sed -i "s/library.h/${LIB_NAME}.h/g" src/${LIB_NAME}.c
 
-# rename files
-mv src/library.h src/${LIB_NAME}.h
-mv src/library.c src/${LIB_NAME}.c
+# edit license file and headers
+if [[ -n "${LICENSE_FILE}" ]]; then
+    GIT_USER=$(git config --global user.name)
+    GIT_EMAIL=$(git config --global user.email)
+    YEAR=$(date +%Y)
+
+    # rename file
+    mv ${license} LICENSE
+
+    sed -i "s/_YEAR_/${YEAR}/g" LICENSE src/${LIB_NAME}.{h,c}
+    sed -i "s/_FULLNAME_/${GIT_USER} <${GIT_EMAIL}>/g" LICENSE src/${LIB_NAME}.{h,c}
+fi
 
 echo "project ${LIB_NAME} created at ${DEST_PATH}"
