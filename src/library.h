@@ -49,6 +49,13 @@ extern "C"
 ****************************************************************************************************
 */
 
+// include external configuration file in case it exists
+#if __has_include("library_config.h")
+#include "library_config.h"
+#endif
+
+// add configuration errors checking here
+
 #ifdef __cplusplus
 }
 #endif
